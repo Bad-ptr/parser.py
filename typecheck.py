@@ -90,7 +90,7 @@ class type_spec():
 
     def check(self, obj):
         raise NotImplementedError("You calling 'check' method of class: "
-                                  + self.__class__.__name__
+                                  + repr(self.__class__.__name__)
                                   + " but it's not implemented.")
 
 
@@ -204,11 +204,11 @@ class ts_num(type_spec):
 def rec_type_check(type_sig, objs):
     inner_stack = []
     state = True
-    if not isinstance(type_sig, Iterable):
+    if not isinstance(type_sig, tuple):
         type_sig = (type_sig,)
-    if not isinstance(objs, Iterable):
+    if not isinstance(objs, tuple):
         objs = (objs,)
-    t_sig, ob_s = tuple(type_sig), tuple(objs)
+    t_sig, ob_s = type_sig, objs #tuple(type_sig), tuple(objs)
     while True:
         if () == t_sig:
             if () != ob_s:
@@ -376,6 +376,6 @@ def returns(*type_sig, **kw):
 def info(fname, expected, actual, flag):
     '''Convenience function returns nicely formatted error/warning msg.'''
     msg = "'{}' method ".format(repr(fname))\
-          + ("accepts", "returns")[flag] + " ({}), but ".format(repr(expected))\
+          + ("accepts", "returns")[flag] + " ({}),\nbut ".format(repr(expected))\
           + ("was given", "result is")[flag] + " ({})".format(repr(actual))
     return msg
