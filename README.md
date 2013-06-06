@@ -16,36 +16,31 @@ If `err_level` is not passed to the decorator, the default level(MEDIUM) is used
 
 ## Example
 
+if you define function like that:  
+
 ```python
-
-    >>> @accepts(ts_num(int, min_num=3,max_num=3),("asd",tuple,list,[1,1],{str:int, 'a':4}))
-    ... @returns(1,2,3,("asd",tuple,list,[1,1],{str:int, 'a':4}))
-    ... def fun(a,b,c,d):
-    ...     return a,b,c,d
-    ...
-    >>> fun(1,2,3,("asd",(),[],[1,1],{str:int, 'a':4}))
-    (1,2,3,("asd",(),[],[1,1],{str:int, 'a':4}))
-    >>>
-    >>>
-    >>> fun(1,2,3,("asd",(),[],[1,2],{str:int, 'a':4}))
-    ''fun'' method accepts ((ts_num((<class 'int'>,), min_num=3, max_num=3), ('asd', <class 'tuple'>, <class 'list'>, [1, 1], {<class 'str'>: <class 'int'>, 'a': 4}))), but was given
-    ((1, 2, 3, ('asd', (), [], [1, 2], {'asd': 1, 'a': 4})))
-    TypeStack:
-     Objects not equal: 1 to 2
-    Type not matched: [1, 1] to [1, 2]
-    Type not matched: ('asd', <class 'tuple'>, <class 'list'>, [1, 1], {<class 'str'>: <class 'int'>, 'a': 4}) to ('asd', (), [], [1, 2], {'asd': 1, 'a': 4})
-    Type not matched: (ts_num((<class 'int'>,), min_num=3, max_num=3), ('asd', <class 'tuple'>, <class 'list'>, [1, 1], {<class 'str'>: <class 'int'>, 'a': 4})) to (1, 2, 3, ('asd',
-    (), [], [1, 2], {'asd': 1, 'a': 4}))
-
-    ''fun'' method returns ((1, 2, 3, ('asd', <class 'tuple'>, <class 'list'>, [1, 1], {<class 'str'>: <class 'int'>, 'a': 4}))), but result is ((1, 2, 3, ('asd', (), [], [1, 2], {'a
-    sd': 1, 'a': 4})))
-    TypeStack:
-     Objects not equal: 1 to 2
-    Type not matched: [1, 1] to [1, 2]
-    Type not matched: ('asd', <class 'tuple'>, <class 'list'>, [1, 1], {<class 'str'>: <class 'int'>, 'a': 4}) to ('asd', (), [], [1, 2], {'asd': 1, 'a': 4})
-    Type not matched: (1, 2, 3, ('asd', <class 'tuple'>, <class 'list'>, [1, 1], {<class 'str'>: <class 'int'>, 'a': 4})) to (1, 2, 3, ('asd', (), [], [1, 2], {'asd': 1, 'a': 4}))
-
-    (1, 2, 3, ('asd', (), [], [1, 2], {'asd': 1, 'a': 4}))
-
+@accepts(ts_num(int, min_num=3,max_num=3),("asd",tuple,list,[1,1]))
+@returns(1,2,3,("asd",tuple,[ts_num(int)],[1,1]))
+def fun(a,b,c,d):
+    return a,b,c,d
 ```
 
+and then call it like that:  
+
+```python
+fun(1,2,3,("asd",(1,2),[],[1,1]))
+```
+
+you'l get this:  
+
+```
+''fun'' method returns ((1, 2, 3, ('asd', <class 'tuple'>, [ts_num((<class 'int'>,), min_num=1, max_num=-1)], [1, 1]))),
+but result is ((1, 2, 3, ('asd', (1, 2), [], [1, 1])))
+TypeStack: 
+ ts_num not matched: min_num=1, max_num=-1; but actual_num=0 (<class 'int'>,) to ()
+Type not matched: (ts_num((<class 'int'>,), min_num=1, max_num=-1),) to ()
+Type not matched: ([ts_num((<class 'int'>,), min_num=1, max_num=-1)], [1, 1]) to ([1, 1],)
+Type not matched: (('asd', <class 'tuple'>, [ts_num((<class 'int'>,), min_num=1, max_num=-1)], [1, 1]),) to () 
+
+(1, 2, 3, ('asd', (1, 2), [], [1, 1]))
+```

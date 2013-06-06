@@ -85,6 +85,20 @@ class stack_with_error():
         return (self.msg + " "
                 + repr(self.typ) + " to " + repr(self.obj))
 
+class TypeCheckError(Exception):
+    def __init__(self, stack):
+        self.stack = stack
+
+    def __str__(self):
+        return repr(self.stack)
+
+class TypeCheckLengthError(Exception):
+    def __init__(self, stack):
+        self.stack = stack
+
+    def __str__(self):
+        return repr(self.stack)
+
 
 class type_spec():
 
@@ -98,8 +112,8 @@ class ts_any(type_spec):
     def __repr__(self):
         return "ts_any()"
 
-    def check(self, obj):
-        return True
+    def check(self, obj_s):
+        return obj_s[1:]
 
 
 class ts_not(type_spec):
@@ -109,16 +123,16 @@ class ts_not(type_spec):
     def __repr__(self):
         return "ts_not(" + repr(self.type_sigs) + ")"
 
-    def check(self, obj):
+    def check(self, obj_s):
         for ts in self.type_sigs:
             try:
-                rec_type_check(ts, obj)
-            except TypeError:
+                rec_type_check((ts,), obj_s)
+            except TypeCheckError:
                 continue
             else:
-                raise TypeError([ stack_with_error("matched.", ts, obj)
-                                , stack_with_error("ts_not not matched:", self.type_sigs, obj) ])
-        return True
+                raise TypeCheckError([ stack_with_error("matched.", ts, obj_s[0])
+                                       , stack_with_error("ts_not not matched:", self.type_sigs, obj_s[0]) ])
+        return obj_s[1:]
 
 
 class ts_and(type_spec):
@@ -128,15 +142,15 @@ class ts_and(type_spec):
     def __repr__(self):
         return "ts_and(" + repr(self.type_sigs) + ")"
 
-    def check(self, obj):
+    def check(self, obj_s):
         for ts in self.type_sigs:
             try:
-                rec_type_check(ts, obj)
-            except TypeError as err:
+                rec_type_check((ts,), obj_s)
+            except TypeCheckError as err:
                 lst = err.args[0]
-                lst.append(stack_with_error("ts_and not matched:", self.type_sigs, obj))
-                raise TypeError(lst)
-        return True
+                lst.append(stack_with_error("ts_and not matched:", self.type_sigs, obj_s[0]))
+                raise TypeCheckError(lst)
+        return obj_s[1:]
 
 
 class ts_or(type_spec):
@@ -146,15 +160,15 @@ class ts_or(type_spec):
     def __repr__(self):
         return "ts_or(" + ', '.join(map(repr, self.type_sigs)) + ")"
 
-    def check(self, obj):
+    def check(self, obj_s):
         for ts in self.type_sigs:
             try:
-                rec_type_check(ts, obj)
-            except TypeError:
+                rec_type_check((ts,), obj_s)
+            except TypeCheckError:
                 continue
             else:
-                return True
-        raise TypeError( [stack_with_error("ts_or not matched:", self.type_sigs, obj)] )
+                return obj_s[1:]
+        raise TypeCheckError( [stack_with_error("ts_or not matched:", self.type_sigs, obj_s[0])] )
 
 
 class ts_eq(type_spec):
@@ -164,11 +178,11 @@ class ts_eq(type_spec):
     def __repr__(self):
         return "ts_eq(" + repr(self.obj) + ")"
 
-    def check(self, obj):
-        if True is (self.obj == obj):
-            return True
+    def check(self, obj_s):
+        if True is (self.obj == obj_s[0]):
+            return obj_s[1:]
         else:
-            raise TypeError( [stack_with_error("ts_eq not matched:", self.obj, obj)] )
+            raise TypeCheckError( [stack_with_error("ts_eq not matched:", self.obj, obj_s[0])] )
 
 
 class ts_num(type_spec):
@@ -176,119 +190,123 @@ class ts_num(type_spec):
         self.type_sigs = type_sigs
         self.min_num = min_num
         self.max_num = max_num
-        self.num = 0
 
     def __repr__(self):
         return ("ts_num(" + repr(self.type_sigs) + ", min_num="
                 + repr(self.min_num) + ", max_num=" + repr(self.max_num) + ")")
 
-    def check(self, objs):
-        self.num = 0
-        for (typ, obj) in zip(cycle(self.type_sigs), objs):
-            try:
-                rec_type_check(typ, obj)
-            except TypeError:
+    def check(self, obj_s):
+        num = 0
+        obl = obj_s
+        inn_st = []
+        for typ in cycle(self.type_sigs):
+            #print(self.type_sigs, " ; ", typ, " ; ", obl)
+            if () == obl:
                 break
-            self.num += 1
+            try:
+                rec_type_check((typ,), obl)
+            except TypeCheckLengthError:
+                pass
+            except TypeCheckError as err:
+                inn_st = err.args[0]
+                break
+            num += 1
+            obl = obl[1:]
         man = self.max_num
         if man < 0:
-            man = self.num + 1
-        if (self.num >= self.min_num and self.num <= man):
-            return True
-        raise TypeError( [stack_with_error("ts_num not matched: min_num=" + repr(self.min_num)
-                                           + ", max_num=" + repr(self.max_num)
-                                           + "; but actual_num=" + repr(self.num)
-                                           , self.type_sigs, objs)] )
+            man = num + 1
+        if (num >= self.min_num and num <= man):
+            return obj_s[num:]
+
+        inn_st.append(stack_with_error("ts_num not matched: min_num=" + repr(self.min_num)
+                                       + ", max_num=" + repr(self.max_num)
+                                       + "; but actual_num=" + repr(num)
+                                       , self.type_sigs, obj_s))
+        raise TypeCheckError(inn_st)
 
 
 def rec_type_check(type_sig, objs):
     inner_stack = []
     state = True
-    if not isinstance(type_sig, tuple):
-        type_sig = (type_sig,)
-    if not isinstance(objs, tuple):
-        objs = (objs,)
-    t_sig, ob_s = type_sig, objs #tuple(type_sig), tuple(objs)
-    while True:
-        if () == t_sig:
-            if () != ob_s:
-                state = False
-                raise TypeError( [stack_with_error("Type signature length not matched:"
-                                                   , type_sig, objs)] )
-            break
-        elif () == ob_s:
-            state = False
-            raise TypeError( [stack_with_error("Type signature length not matched:"
-                                               , type_sig, objs)] )
-            break
 
-        typ = t_sig[0]
-        obj = ob_s[0]
+    typ, obj = None,None
 
-        if(isinstance(typ, type_spec)):
-            if(isinstance(typ, ts_num)):
-                try:
-                    typ.check(ob_s)
-                except TypeError as err:
-                    state = False
-                    inner_stack = err.args[0]
-                    break
-                else:
-                    ob_s = ob_s[typ.num:]
-                    t_sig = t_sig[1:]
-                    continue
-            else:
-                try:
-                    typ.check(obj)
-                except TypeError as err:
-                    state = False
-                    inner_stack = err.args[0]
-                    break
-        elif(isinstance(typ, type)):
-            if False is isinstance(obj, typ):
-                state = False
-                inner_stack = [stack_with_error("Object is not instance of:", typ, obj)]
-                break
-        elif(isinstance(typ, Iterable)):
-            if type(typ) != type(obj):
-                state = False
-                inner_stack = [stack_with_error("Type not matched:", typ, obj)]
-                break
-            if(isinstance(typ, str)):
-                if typ != obj:
-                    state = False
-                    inner_stack = [stack_with_error("Strings not equal:", typ, obj)]
-                    break
-            elif(isinstance(typ, dict)):
-                #for (tk, tv), (ok, ov) in zip(typ, obj):
-                # if False == (rec_type_check(typ.keys(), obj.keys())
-                #              and rec_type_check(typ.values(), obj.values())):
-                try:
-                    rec_type_check(typ.items(), obj.items())
-                except TypeError as err:
-                    state = False
-                    inner_stack = err.args[0]
-                    break
-            else:
-                try:
-                    rec_type_check(typ, obj)
-                except TypeError as err:
-                    state = False
-                    inner_stack = err.args[0]
-                    break
+    if () == type_sig:
+        typ = type_sig
+        if () == objs:
+            return objs
         else:
+            state = False
+            inner_stack = [stack_with_error("Type length not matched:", type_sig, objs)]
+            raise TypeCheckLengthError(inner_stack)
+            #raise TypeCheckError(inner_stack)
+    elif () == objs:
+        typ = type_sig[0]
+        obj = objs
+    else:
+        typ = type_sig[0]
+        obj = objs[0]
+
+    #print(typ, " ; ", obj)
+
+    if isinstance(typ, type_spec):
+        try:
+            objs = typ.check(objs)
+        except TypeCheckError as err:
+            state = False
+            inner_stack = err.args[0]
+    elif isinstance(typ, type):
+        if False is isinstance(obj, typ):
+            state = False
+            inner_stack = [stack_with_error("Object is not instance of:", typ, obj)]
+        else:
+            objs = objs[1:]
+    elif isinstance(typ, Iterable):
+        if type(type_sig) != type(objs):
+            state = False
+            inner_stack = [stack_with_error("Type not matched:", type_sig, objs)]
+        elif 0 == len(type_sig):
+            if 0 == len(obj):
+                objs = objs[1:]
+            else:
+                state = False
+                inner_stack = [stack_with_error("Type length not matched:", type_sig, objs)]
+        if isinstance(typ, str):
             if typ != obj:
                 state = False
-                inner_stack = [stack_with_error("Objects not equal:", typ, obj)]
-                break
-
-        t_sig = t_sig[1:]
-        ob_s = ob_s[1:]
-
+                inner_stack = [stack_with_error("Strings not equal:", typ, obj)]
+            else:
+                objs = objs[1:]
+        elif isinstance(typ, dict):
+            try:
+                rec_type_check(tuple(typ.items()), tuple(obj.items()))
+            except TypeCheckLengthError as err:
+                state = False
+                inner_stack = err.args[0]
+            except TypeCheckError as err:
+                state = False
+                inner_stack = err.args[0]
+            objs = objs[1:]
+        else:
+            try:
+                rec_type_check(tuple(typ), tuple(obj))
+            except TypeCheckLengthError as err:
+                state = False
+                inner_stack = err.args[0]
+            except TypeCheckError as err:
+                state = False
+                inner_stack = err.args[0]
+            objs = objs[1:]
+    else:
+        if typ != objs[0]:
+            state = False
+            inner_stack = [stack_with_error("Objects not equal:", typ, objs[0])]
+        else:
+            objs = objs[1:]
     if False is state:
-        inner_stack.append( stack_with_error("Type not matched:" , type_sig, objs) )
-        raise TypeError(inner_stack)
-    return state
+        inner_stack.append(stack_with_error("Type not matched:", type_sig, objs))
+        raise TypeCheckError(inner_stack)
+    return rec_type_check(type_sig[1:], objs)
 
 
 def accepts(*type_sig, **kw):
@@ -313,7 +331,7 @@ def accepts(*type_sig, **kw):
                     return f(*args)
                 try:
                     rec_type_check(type_sig, args)
-                except TypeError as err:
+                except TypeCheckError as err:
                     if err_level > 0:
                         print(info(f.__name__, type_sig, args, 0),file=sys.stderr)
                         print("TypeStack: \n"
@@ -354,8 +372,11 @@ def returns(*type_sig, **kw):
                 if err_level is 0:
                     return result
                 try:
-                    rec_type_check(type_sig, result)
-                except TypeError as err:
+                    if not isinstance(result,tuple):
+                        rec_type_check(type_sig, (result,))
+                    else:
+                        rec_type_check(type_sig, result)
+                except TypeCheckError as err:
                     if err_level > 0:
                         print(info(f.__name__, type_sig, result, 1), file=sys.stderr)
                         print("TypeStack: \n", "\n".join(map(str, err.args[0])), "\n"
