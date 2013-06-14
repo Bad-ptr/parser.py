@@ -236,15 +236,12 @@ def rec_type_check(type_sig, objs):
             state = False
             inner_stack = [stack_with_error("Type length not matched:", type_sig, objs)]
             raise TypeCheckLengthError(inner_stack)
-            #raise TypeCheckError(inner_stack)
     elif () == objs:
         typ = type_sig[0]
         obj = objs
     else:
         typ = type_sig[0]
         obj = objs[0]
-
-    #print(typ, " ; ", obj)
 
     if isinstance(typ, type_spec):
         try:
@@ -259,15 +256,9 @@ def rec_type_check(type_sig, objs):
         else:
             objs = objs[1:]
     elif isinstance(typ, Iterable):
-        if type(type_sig) != type(objs):
+        if type(typ) != type(obj):
             state = False
-            inner_stack = [stack_with_error("Type not matched:", type_sig, objs)]
-        elif 0 == len(type_sig):
-            if 0 == len(obj):
-                objs = objs[1:]
-            else:
-                state = False
-                inner_stack = [stack_with_error("Type length not matched:", type_sig, objs)]
+            inner_stack = [stack_with_error("Type not matched:", typ, obj)]
         if isinstance(typ, str):
             if typ != obj:
                 state = False
@@ -280,18 +271,20 @@ def rec_type_check(type_sig, objs):
             except TypeCheckError as err:
                 state = False
                 inner_stack = err.args[0]
-            objs = objs[1:]
+            else:
+                objs = objs[1:]
         else:
             try:
                 rec_type_check(tuple(typ), tuple(obj))
             except TypeCheckError as err:
                 state = False
                 inner_stack = err.args[0]
-            objs = objs[1:]
+            else:
+                objs = objs[1:]
     else:
-        if typ != objs[0]:
+        if typ != obj:
             state = False
-            inner_stack = [stack_with_error("Objects not equal:", typ, objs[0])]
+            inner_stack = [stack_with_error("Objects not equal:", typ, obj)]
         else:
             objs = objs[1:]
     if False is state:
