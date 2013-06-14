@@ -87,18 +87,20 @@ class stack_with_error():
 
 
 class TypeCheckError(Exception):
-    def __init__(self, stack):
+    def __init__(self, stack=[], num_matched=0):
         self.stack = stack
+        self.num_matched = num_matched
 
     def __str__(self):
         return repr(self.stack)
 
 class TypeCheckLengthError(TypeCheckError):
-    pass
+    def __init__(self, stack=[], num_matched=0, objs=[]):
+        super().__init__(stack, num_matched)
+        self.objs = objs
 
 
 class type_spec():
-
     def check(self, obj):
         raise NotImplementedError("You calling 'check' method of class: "
                                   + repr(self.__class__.__name__)
@@ -123,48 +125,61 @@ class ts_not(type_spec):
     def check(self, obj_s):
         for ts in self.type_sigs:
             try:
-                rec_type_check((ts,), obj_s)
-            except TypeCheckError:
+                n = rec_type_check((ts,), obj_s)
+            except TypeCheckError as err:
                 continue
             else:
-                raise TypeCheckError([ stack_with_error("matched.", ts, obj_s[0])
-                                       , stack_with_error("ts_not not matched:", self.type_sigs, obj_s[0]) ])
-        return obj_s[1:]
+                raise TypeCheckError([stack_with_error("matched.", ts, obj_s[0])
+                                      , stack_with_error("ts_not not matched:", self.type_sigs, obj_s) ])
+        return 1
 
 
 class ts_and(type_spec):
-    def __init__(self, *type_sigs):
+    def __init__(self, *type_sigs, tt='min'):
         self.type_sigs = type_sigs
 
     def __repr__(self):
         return "ts_and(" + repr(self.type_sigs) + ")"
 
     def check(self, obj_s):
+        ll = 0
         for ts in self.type_sigs:
             try:
-                rec_type_check((ts,), obj_s)
+                n = rec_type_check((ts,), obj_s)
+                if n > ll:
+                    ll = n
             except TypeCheckError as err:
-                lst = err.args[0]
+                lst = err.stack
                 lst.append(stack_with_error("ts_and not matched:", self.type_sigs, obj_s[0]))
                 raise TypeCheckError(lst)
-        return obj_s[1:]
+        return ll
 
 
 class ts_or(type_spec):
-    def __init__(self, *type_sigs):
+    def __init__(self, *type_sigs, tt='min'):
         self.type_sigs = type_sigs
+        self.tt = tt
 
     def __repr__(self):
         return "ts_or(" + ', '.join(map(repr, self.type_sigs)) + ")"
 
     def check(self, obj_s):
+        ll = []
         for ts in self.type_sigs:
             try:
-                rec_type_check((ts,), obj_s)
+                n = rec_type_check((ts,), obj_s)
+                ll.append(n)
             except TypeCheckError:
                 continue
             else:
-                return obj_s[1:]
+                n = 0
+                if self.tt == 'min':
+                    n = min(n, *ll)
+                elif self.tt == 'max':
+                    n = max(n, *ll)
+                elif self.tt == 'single':
+                    n = 1
+                return n
         raise TypeCheckError( [stack_with_error("ts_or not matched:", self.type_sigs, obj_s[0])] )
 
 
@@ -177,7 +192,7 @@ class ts_eq(type_spec):
 
     def check(self, obj_s):
         if True is (self.obj == obj_s[0]):
-            return obj_s[1:]
+            return 1
         else:
             raise TypeCheckError( [stack_with_error("ts_eq not matched:", self.obj, obj_s[0])] )
 
@@ -196,24 +211,24 @@ class ts_num(type_spec):
         num = 0
         obl = obj_s
         inn_st = []
+        n = 1
         for typ in cycle(self.type_sigs):
-            #print(self.type_sigs, " ; ", typ, " ; ", obl)
             if () == obl:
                 break
             try:
-                rec_type_check((typ,), obl)
+                n = rec_type_check((typ,), obl)
             except TypeCheckLengthError:
                 pass
             except TypeCheckError as err:
-                inn_st = err.args[0]
+                inn_st = err.stack
                 break
-            num += 1
-            obl = obl[1:]
+            num += n
+            obl = obl[n:]
         man = self.max_num
         if man < 0:
             man = num + 1
         if (num >= self.min_num and num <= man):
-            return obj_s[num:]
+            return num
 
         inn_st.append(stack_with_error("ts_num not matched: min_num=" + repr(self.min_num)
                                        + ", max_num=" + repr(self.max_num)
@@ -222,20 +237,21 @@ class ts_num(type_spec):
         raise TypeCheckError(inn_st)
 
 
-def rec_type_check(type_sig, objs):
+def rec_type_check(type_sig, objs, match_num=0):
     inner_stack = []
     state = True
+    mn = 1
 
     typ, obj = None,None
 
     if () == type_sig:
         typ = type_sig
         if () == objs:
-            return objs
+            return match_num + mn
         else:
             state = False
             inner_stack = [stack_with_error("Type length not matched:", type_sig, objs)]
-            raise TypeCheckLengthError(inner_stack)
+            raise TypeCheckLengthError(inner_stack, match_num, objs)
     elif () == objs:
         typ = type_sig[0]
         obj = objs
@@ -245,16 +261,14 @@ def rec_type_check(type_sig, objs):
 
     if isinstance(typ, type_spec):
         try:
-            objs = typ.check(objs)
+            mn = typ.check(objs)
         except TypeCheckError as err:
             state = False
-            inner_stack = err.args[0]
+            inner_stack = err.stack
     elif isinstance(typ, type):
         if False is isinstance(obj, typ):
             state = False
             inner_stack = [stack_with_error("Object is not instance of:", typ, obj)]
-        else:
-            objs = objs[1:]
     elif isinstance(typ, Iterable):
         if type(typ) != type(obj):
             state = False
@@ -263,34 +277,26 @@ def rec_type_check(type_sig, objs):
             if typ != obj:
                 state = False
                 inner_stack = [stack_with_error("Strings not equal:", typ, obj)]
-            else:
-                objs = objs[1:]
         elif isinstance(typ, dict):
             try:
                 rec_type_check(tuple(typ.items()), tuple(obj.items()))
             except TypeCheckError as err:
                 state = False
-                inner_stack = err.args[0]
-            else:
-                objs = objs[1:]
+                inner_stack = err.stack
         else:
             try:
                 rec_type_check(tuple(typ), tuple(obj))
             except TypeCheckError as err:
                 state = False
-                inner_stack = err.args[0]
-            else:
-                objs = objs[1:]
+                inner_stack = err.stack
     else:
         if typ != obj:
             state = False
             inner_stack = [stack_with_error("Objects not equal:", typ, obj)]
-        else:
-            objs = objs[1:]
     if False is state:
         inner_stack.append(stack_with_error("Type not matched:", type_sig, objs))
-        raise TypeCheckError(inner_stack)
-    return rec_type_check(type_sig[1:], objs)
+        raise TypeCheckError(inner_stack, match_num)
+    return rec_type_check(type_sig[1:], objs[mn:], match_num + mn)
 
 
 def accepts(*type_sig, **kw):
@@ -319,7 +325,7 @@ def accepts(*type_sig, **kw):
                     if err_level > 0:
                         print(info(f.__name__, type_sig, args, 0),file=sys.stderr)
                         print("TypeStack: \n"
-                              ,"\n".join(map(str,err.args[0])), "\n"
+                              ,"\n".join(map(str,err.stack)), "\n"
                               ,file=sys.stderr)
                     elif err_level > 1:
                         raise
@@ -363,7 +369,7 @@ def returns(*type_sig, **kw):
                 except TypeCheckError as err:
                     if err_level > 0:
                         print(info(f.__name__, type_sig, result, 1), file=sys.stderr)
-                        print("TypeStack: \n", "\n".join(map(str, err.args[0])), "\n"
+                        print("TypeStack: \n", "\n".join(map(str, err.stack)), "\n"
                               , file=sys.stderr)
                     elif err_level > 1:
                         raise
