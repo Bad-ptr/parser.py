@@ -85,6 +85,7 @@ class stack_with_error():
         return (self.msg + " "
                 + repr(self.typ) + " to " + repr(self.obj))
 
+
 class TypeCheckError(Exception):
     def __init__(self, stack):
         self.stack = stack
@@ -92,12 +93,8 @@ class TypeCheckError(Exception):
     def __str__(self):
         return repr(self.stack)
 
-class TypeCheckLengthError(Exception):
-    def __init__(self, stack):
-        self.stack = stack
-
-    def __str__(self):
-        return repr(self.stack)
+class TypeCheckLengthError(TypeCheckError):
+    pass
 
 
 class type_spec():
@@ -280,9 +277,6 @@ def rec_type_check(type_sig, objs):
         elif isinstance(typ, dict):
             try:
                 rec_type_check(tuple(typ.items()), tuple(obj.items()))
-            except TypeCheckLengthError as err:
-                state = False
-                inner_stack = err.args[0]
             except TypeCheckError as err:
                 state = False
                 inner_stack = err.args[0]
@@ -290,9 +284,6 @@ def rec_type_check(type_sig, objs):
         else:
             try:
                 rec_type_check(tuple(typ), tuple(obj))
-            except TypeCheckLengthError as err:
-                state = False
-                inner_stack = err.args[0]
             except TypeCheckError as err:
                 state = False
                 inner_stack = err.args[0]
