@@ -21,59 +21,72 @@
 
 
 '''
-This is highly modified version of
-http://wiki.python.org/moin/PythonDecoratorLibrary#Type_Enforcement_.28accepts.2Freturns.29
-It was tested with Python 3.3.1
 The core of this module is 'rec_type_check' function.
 You can extend it by defining new subclasses to type_spec class
 (and then using this subclasses in type signature).
 The one thing I'm unshure is how correct the dict handling code,
 couse dict is not ordered collection.
+It was tested with Python 3.3.1
 
-One of three degrees of enforcement may be specified by passing
-the 'err_level' keyword argument to the decorator:
-    0 -- NONE:   No type-checking. Decorators disabled.
-    1 -- MEDIUM: Print warning message to stderr. (Default)
-    2 -- STRONG: Raise TypeError with message.
-If 'err_level' is not passed to the decorator, the default level(MEDIUM) is used.
+Level of error reporting is controlled via __typecheck_error_level variable:
+  NOTHING   = -1
+  WARNING   = 0
+  EXCEPTION = 1
+Which could be set by set_typecheck_error_level function.
 
 Example usage:
-    >>> @accepts(ts_num(int, min_num=3,max_num=3),("asd",tuple,list,[1,1],{str:int, 'a':4}))
-    ... @returns(1,2,3,("asd",tuple,list,[1,1],{str:int, 'a':4}))
-    ... def fun(a,b,c,d):
-    ...     return a,b,c,d
-    ...
-    >>> fun(1,2,3,("asd",(),[],[1,1],{str:int, 'a':4}))
-    (1,2,3,("asd",(),[],[1,1],{str:int, 'a':4}))
-    >>>
-    >>>
-    >>> fun(1,2,3,("asd",(),[],[1,2],{str:int, 'a':4}))
-    ''fun'' method accepts ((ts_num((<class 'int'>,), min_num=3, max_num=3), ('asd', <class 'tuple'>, <class 'list'>, [1, 1], {<class 'str'>: <class 'int'>, 'a': 4}))), but was given
-    ((1, 2, 3, ('asd', (), [], [1, 2], {'asd': 1, 'a': 4})))
-    TypeStack:
-     Objects not equal: 1 to 2
-    Type not matched: [1, 1] to [1, 2]
-    Type not matched: ('asd', <class 'tuple'>, <class 'list'>, [1, 1], {<class 'str'>: <class 'int'>, 'a': 4}) to ('asd', (), [], [1, 2], {'asd': 1, 'a': 4})
-    Type not matched: (ts_num((<class 'int'>,), min_num=3, max_num=3), ('asd', <class 'tuple'>, <class 'list'>, [1, 1], {<class 'str'>: <class 'int'>, 'a': 4})) to (1, 2, 3, ('asd',
-    (), [], [1, 2], {'asd': 1, 'a': 4}))
+>>> from typecheck import (typecheck,accepts,returns, ts_num)
 
-    ''fun'' method returns ((1, 2, 3, ('asd', <class 'tuple'>, <class 'list'>, [1, 1], {<class 'str'>: <class 'int'>, 'a': 4}))), but result is ((1, 2, 3, ('asd', (), [], [1, 2], {'a
-    sd': 1, 'a': 4})))
-    TypeStack:
-     Objects not equal: 1 to 2
-    Type not matched: [1, 1] to [1, 2]
-    Type not matched: ('asd', <class 'tuple'>, <class 'list'>, [1, 1], {<class 'str'>: <class 'int'>, 'a': 4}) to ('asd', (), [], [1, 2], {'asd': 1, 'a': 4})
-    Type not matched: (1, 2, 3, ('asd', <class 'tuple'>, <class 'list'>, [1, 1], {<class 'str'>: <class 'int'>, 'a': 4})) to (1, 2, 3, ('asd', (), [], [1, 2], {'asd': 1, 'a': 4}))
+>>> @accepts(ts_num(int, min_num=3,max_num=3),("asd",tuple,list,[1,1]),bool)
+... def fun(a,b,c,d,test=False):
+...     return a,b,c,d
 
-    (1, 2, 3, ('asd', (), [], [1, 2], {'asd': 1, 'a': 4}))
+>>> fun(1,2,3,("asd",(),[],[1,1]),True)
+# (1, 2, 3, ('asd', (), [], [1, 1]))
 
+>>> fun(1,2,3,("asd",(),[],[1,1])) # here will be used default value of test parameter
+# (1, 2, 3, ('asd', (), [], [1, 1]))
+
+>>> returns(1,2,3,("asd",(),[ts_num(int)],[1,1]))(fun)
+
+>>> set_typecheck_error_level(1)
+
+>>> fun(1,2,3,("asd",(),[],[1,1]),True)
+# 'fun' method returns ((1, 2, 3, ('asd', (), [ts_num((<class 'int'>,), min_num=1, max_num=-1)], [1, 1]))),
+# but result is (((1, 2, 3, ('asd', (), [], [1, 1])),))
+# TypeStack:
+#  ts_num not matched: min_num=1, max_num=-1; but actual_num=0 (<class 'int'>,) to ()
+# Type not matched: (ts_num((<class 'int'>,), min_num=1, max_num=-1),) to ()
+# Type not matched: ([ts_num((<class 'int'>,), min_num=1, max_num=-1)], [1, 1]) to ([], [1, 1])
+# Type not matched: (('asd', (), [ts_num((<class 'int'>,), min_num=1, max_num=-1)], [1, 1]),) to (('asd',(), [], [1, 1]),)
+#
+# Traceback...
+
+>>> @typecheck()
+... def foo(a:int,b:bool, *vargs:((1,2),)) -> 'ret_string':
+...     return 'ret_string'
+
+>>> foo(0,False,(1,2))
+# 'ret_string'
 '''
+
 
 import sys
 
-from collections import (Iterable)
+from collections import (Iterable, OrderedDict)
 from itertools import (cycle)
+from functools import (wraps)
+import inspect
 
+
+NOTHING   = -1
+WARNING   = 0
+EXCEPTION = 1
+__typecheck_error_level = WARNING
+
+def set_typecheck_error_level(err_level=WARNING):
+    global __typecheck_error_level
+    __typecheck_error_level = err_level
 
 class stack_with_error():
     def __init__(self, msg, typ, obj):
@@ -86,7 +99,7 @@ class stack_with_error():
                 + repr(self.typ) + " to " + repr(self.obj))
 
 
-class TypeCheckError(Exception):
+class TypeCheckError(TypeError):
     def __init__(self, stack=[], num_matched=0):
         self.stack = stack
         self.num_matched = num_matched
@@ -273,7 +286,7 @@ def rec_type_check(type_sig, objs, match_num=0):
         if type(typ) != type(obj):
             state = False
             inner_stack = [stack_with_error("Type not matched:", typ, obj)]
-        if isinstance(typ, str):
+        elif isinstance(typ, str):
             if typ != obj:
                 state = False
                 inner_stack = [stack_with_error("Strings not equal:", typ, obj)]
@@ -299,94 +312,204 @@ def rec_type_check(type_sig, objs, match_num=0):
     return rec_type_check(type_sig[1:], objs[mn:], match_num + mn)
 
 
-def accepts(*type_sig, **kw):
+
+class __empty_arg():
+    def __str__(self):
+        return "<empty>"
+    def __iter__(self):
+        return self
+    def __next__(self):
+        raise StopIteration
+    def __bool__(self):
+        return False
+__EARG = __empty_arg()
+
+
+def typecheck(pos_args_sig=__EARG, kw_args_sig=__EARG, return_sig=__EARG):
+    '''Function decorator. Checks decorated function's arguments and return value
+    are of the expected type signature.
+
+    Parameters:
+    pos_args_sig -- The expected types of the positional arguments. (tuple)
+    kw_args_sig  -- The expected types of the keyword arguments.    (dict)
+    return_sig   -- The expected type of return value.              (tuple)
+
+    If no arguments are given -- try to build type signatures from annotations.
+    '''
+    def decorator(f):
+        nonlocal pos_args_sig, kw_args_sig, return_sig
+        if hasattr(f, '__bptr_typecheck_wrapper_parameters'):
+            if pos_args_sig is not __EARG:
+                f.__bptr_typecheck_wrapper_parameters['pos_args_sig'] = pos_args_sig
+            if kw_args_sig is not __EARG:
+                f.__bptr_typecheck_wrapper_parameters['kw_args_sig'] = kw_args_sig
+            if return_sig is not __EARG:
+                f.__bptr_typecheck_wrapper_parameters['return_sig'] = return_sig
+
+            return f
+
+        else:
+
+            argspec = inspect.getfullargspec(f)
+            pos_args_list     = (argspec.args           or [])
+            pos_args_defaults = (argspec.defaults       or ())
+
+            args_dict = OrderedDict([])
+
+            for n in pos_args_list[:-len(pos_args_defaults)]:
+                args_dict[n] = __EARG
+            for (n, v) in zip(pos_args_list[-len(pos_args_defaults):], pos_args_defaults):
+                args_dict[n] = v
+
+            if (pos_args_sig is __EARG and kw_args_sig is __EARG and return_sig is __EARG):
+                if hasattr(argspec, 'annotations'):
+                    noretsig = True
+                    nopossig = True
+                    nokwsig  = True
+                    annots = argspec.annotations
+
+                    try:
+                        retsig = annots['return']
+                    except KeyError:
+                        noretsig = True
+                    else:
+                        noretsig = False
+                        if not isinstance(retsig, tuple):
+                            retsig = (retsig,)
+                        return_sig = retsig
+
+                    pargsig = []
+                    try:
+                        for n in pos_args_list:
+                            pargsig.append(annots[n])
+                        varargs_name = argspec.varargs
+                        if None is not varargs_name:
+                            var_sig = annots[varargs_name]
+                            if not isinstance(var_sig, Iterable):
+                                pargsig.append(var_sig)
+                            else:
+                                pargsig.extend(list(var_sig))
+                    except KeyError:
+                        nopossig = True
+                    else:
+                        nopossig = False
+                        pos_args_sig = tuple(pargsig)
+
+                    kwargsig = {}
+                    try:
+                        for n in argspec.kwonlyargs:
+                            kwargsig[n] = annots[n]
+                    except KeyError:
+                        nokwsig = True
+                    else:
+                        nokwsig = False
+                        kw_args_sig = kwargsig
+
+                    if noretsig and nopossig and nokwsig:
+                        return f
+                else:
+                    return f
+
+            @wraps(f)
+            def newf(*args, **kws):
+                global __typecheck_error_level
+                if __typecheck_error_level < 0:
+                    return f(*args, **kws)
+                else:
+                    tparams = newf.__bptr_typecheck_wrapper_parameters
+
+                    pargs = []
+                    nn = 0
+                    for (n, v) in zip(tparams['args_dict'].keys(), args):
+                        pargs.append(v)
+                        nn += 1
+                    for n in list(tparams['args_dict'].keys())[nn:]:
+                        if n in kws:
+                            pargs.append(kws[n])
+                            del kws[n]
+                        else:
+                            pargs.append(tparams['args_dict'][n])
+                    pargs.extend(args[nn:])
+
+                    try:
+                        if tparams['pos_args_sig'] is not __EARG:
+                            rec_type_check(tparams['pos_args_sig'], tuple(pargs))
+                        if tparams['kw_args_sig'] is not __EARG:
+                            for (n,v) in kws.items():
+                                if not isinstance(v, tuple):
+                                    v = (v,)
+                                try:
+                                    s = tparams['kw_args_sig'][n]
+                                except KeyError:
+                                    raise TypeCheckError([stack_with_error("Unknown keyword argument:"
+                                                                           , n, v)], 0)
+                                if not isinstance(s, tuple):
+                                    s = (s,)
+                                rec_type_check(s, v)
+                    except TypeCheckError as err:
+                            print(info(f.__name__
+                                       , ("positional: " + repr(tparams['pos_args_sig'])
+                                          + " and keyword: " + repr(tparams['kw_args_sig']))
+                                       , repr(args), 0),file=sys.stderr)
+                            print("TypeStack: \n"
+                                  ,"\n".join(map(str,err.stack)), "\n"
+                                  ,file=sys.stderr)
+                            if __typecheck_error_level > 0:
+                                raise
+                    result = f(*args, **kws)
+                    if tparams['return_sig'] is not __EARG:
+                        try:
+                            if not isinstance(result, tuple):
+                                rec_type_check(tparams['return_sig'], (result, ))
+                            else:
+                                rec_type_check(tparams['return_sig'], result)
+                        except TypeCheckError as err:
+                            print(info(f.__name__
+                                       , repr(tparams['return_sig'])
+                                       , repr((result, )), 1),file=sys.stderr)
+                            print("TypeStack: \n"
+                                  ,"\n".join(map(str,err.stack)), "\n"
+                                  ,file=sys.stderr)
+                            if __typecheck_error_level > 0:
+                                raise
+                        else:
+                            return result
+                    else:
+                        return result
+            newf.__bptr_typecheck_wrapper_parameters = {
+                'args_dict'     : args_dict
+                ,'pos_args_sig' : pos_args_sig
+                ,'kw_args_sig'  : kw_args_sig
+                ,'return_sig'   : return_sig
+            }
+            return newf
+    return decorator
+
+
+def accepts(*pos_args_sig, **kw_args_sig):
     '''Function decorator. Checks decorated function's arguments are
     of the expected type signature.
 
     Parameters:
-    type_sig -- The expected type of the inputs to the decorated function.
-    kw       -- Optional specification of 'err_level' level (this is the only
-                valid keyword argument, no other should be given).
-                err_level = ( 0 | 1 | 2 )
+    pos_args_sig -- The expected types of the positional arguments.
+    kw_args_sig  -- The expected types of the keyword arguments.
     '''
-    if not kw:
-        # default level: MEDIUM
-        err_level = 1
-    else:
-        err_level = kw['err_level']
-    try:
-        def decorator(f):
-            def newf(*args):
-                if err_level is 0:
-                    return f(*args)
-                try:
-                    rec_type_check(type_sig, args)
-                except TypeCheckError as err:
-                    if err_level > 0:
-                        print(info(f.__name__, type_sig, args, 0),file=sys.stderr)
-                        print("TypeStack: \n"
-                              ,"\n".join(map(str,err.stack)), "\n"
-                              ,file=sys.stderr)
-                    elif err_level > 1:
-                        raise
-                return f(*args)
-            newf.__name__ = f.__name__
-            return newf
-        return decorator
-    except KeyError as err:
-        raise KeyError(repr(err.args[0]) + " is not a valid keyword argument")
-    except TypeError:
-        raise
+    return typecheck(pos_args_sig, kw_args_sig)
 
 
-def returns(*type_sig, **kw):
+def returns(*type_sig):
     '''Function decorator. Checks decorated function's return value
     is of the expected type.
 
     Parameters:
     type_sig -- The expected type of the decorated function's return value.
-    kw       -- Optional specification of 'err_level' level (this is the only
-                valid keyword argument, no other should be given).
-                err_level=( 0 | 1 | 2 )
     '''
-    try:
-        if not kw:
-            # default level: MEDIUM
-            err_level = 1
-        else:
-            err_level = kw['err_level']
-
-        def decorator(f):
-            def newf(*args):
-                result = f(*args)
-                if err_level is 0:
-                    return result
-                try:
-                    if not isinstance(result,tuple):
-                        rec_type_check(type_sig, (result,))
-                    else:
-                        rec_type_check(type_sig, result)
-                except TypeCheckError as err:
-                    if err_level > 0:
-                        print(info(f.__name__, type_sig, result, 1), file=sys.stderr)
-                        print("TypeStack: \n", "\n".join(map(str, err.stack)), "\n"
-                              , file=sys.stderr)
-                    elif err_level > 1:
-                        raise
-                return result
-            newf.__name__ = f.__name__
-            return newf
-        return decorator
-
-    except KeyError as err:
-        raise KeyError(repr(err.args[0])  + " is not a valid keyword argument")
-    except TypeError:
-        raise
+    return typecheck(return_sig=type_sig)
 
 
-def info(fname, expected, actual, flag):
+def info(fname_str, expected_str, actual_str, flag):
     '''Convenience function returns nicely formatted error/warning msg.'''
-    msg = "'{}' method ".format(repr(fname))\
-          + ("accepts", "returns")[flag] + " ({}),\nbut ".format(repr(expected))\
-          + ("was given", "result is")[flag] + " ({})".format(repr(actual))
+    msg = "'{}' method ".format(str(fname_str))\
+        + ("accepts", "returns")[flag] + " ({}),\nbut ".format(str(expected_str))\
+        + ("was given", "result is")[flag] + " ({})".format(str(actual_str))
     return msg
