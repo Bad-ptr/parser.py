@@ -25,20 +25,20 @@ Which could be set by `set_typecheck_error_level` function.
 from typecheck import (typecheck,accepts,returns, ts_num, set_typecheck_error_level
                        , NOTHING, WARNING, EXCEPTION)
 
-@accepts(ts_num(int, min_num=3,max_num=3),("asd",tuple,list,[1,1]),bool)
+@accepts(ts_num(int, min_num=3,max_num=3),("asd",tuple,list,[int,1]),bool)
 def fun(a,b,c,d,test=False):
     print("test =", test)
     return a,b,c,d
 
-fun(1,2,3,("asd",(),[],[1,1]),True)
+fun(1,2,3,("asd",(),[],[2,1]),True)
 # test = True
-# (1, 2, 3, ('asd', (), [], [1, 1]))
+# (1, 2, 3, ('asd', (), [], [2, 1]))
 
-fun(1,2,3,("asd",(),[],[1,1]))
+fun(1,2,3,("asd",(),[],[3,1]))
 # test = False
-# (1, 2, 3, ('asd', (), [], [1, 1]))
+# (1, 2, 3, ('asd', (), [], [3, 1]))
 
-returns(1,2,3,("asd",(),[ts_num(int)],[1,1]))(fun)
+returns(1,2,3,(str,(),[ts_num(int)],[1,1]))(fun)
 
 set_typecheck_error_level(EXCEPTION) # EXCEPTION == 1
 
