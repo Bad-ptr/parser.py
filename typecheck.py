@@ -35,21 +35,25 @@ Level of error reporting is controlled via __typecheck_error_level variable:
 Which could be set by set_typecheck_error_level function.
 
 Example usage:
->>> from typecheck import (typecheck,accepts,returns, ts_num)
+>>> from typecheck import (typecheck,accepts,returns, ts_num, set_typecheck_error_level
+                           , NOTHING, WARNING, EXCEPTION)
 
 >>> @accepts(ts_num(int, min_num=3,max_num=3),("asd",tuple,list,[1,1]),bool)
 ... def fun(a,b,c,d,test=False):
+...     print("test =", test)
 ...     return a,b,c,d
 
 >>> fun(1,2,3,("asd",(),[],[1,1]),True)
+# test = True
 # (1, 2, 3, ('asd', (), [], [1, 1]))
 
->>> fun(1,2,3,("asd",(),[],[1,1])) # here will be used default value of test parameter
+>>> fun(1,2,3,("asd",(),[],[1,1]))
+# test = False
 # (1, 2, 3, ('asd', (), [], [1, 1]))
 
 >>> returns(1,2,3,("asd",(),[ts_num(int)],[1,1]))(fun)
 
->>> set_typecheck_error_level(1)
+>>> set_typecheck_error_level(EXCEPTION)
 
 >>> fun(1,2,3,("asd",(),[],[1,1]),True)
 # 'fun' method returns ((1, 2, 3, ('asd', (), [ts_num((<class 'int'>,), min_num=1, max_num=-1)], [1, 1]))),
@@ -125,7 +129,7 @@ class ts_any(type_spec):
         return "ts_any()"
 
     def check(self, obj_s):
-        return obj_s[1:]
+        return 1
 
 
 class ts_not(type_spec):
@@ -325,6 +329,84 @@ class __empty_arg():
 __EARG = __empty_arg()
 
 
+def sigs_from_spec(argspec):
+    if hasattr(argspec, 'annotations'):
+        annots = argspec.annotations
+        pos_args_list = (argspec.args or [])
+        try:
+            retsig = annots['return']
+        except KeyError:
+            retsig = __EARG
+        else:
+            if not isinstance(retsig, tuple):
+                retsig = (retsig,)
+
+        pargsig = []
+        try:
+            for n in pos_args_list:
+                pargsig.append(annots[n])
+            varargs_name = argspec.varargs
+            if None is not varargs_name:
+                var_sig = annots[varargs_name]
+                if not isinstance(var_sig, Iterable):
+                    pargsig.append(var_sig)
+                else:
+                    pargsig.extend(list(var_sig))
+        except KeyError:
+            pargsig = __EARG
+        else:
+            pargsig = tuple(pargsig)
+
+        kwargsig = {}
+        try:
+            for n in argspec.kwonlyargs:
+                kwargsig[n] = annots[n]
+        except KeyError:
+            kwargsig = __EARG
+
+        return pargsig, kwargsig, retsig
+    else:
+        return __EARG, __EARG, __EARG
+
+def args_dict_from_spec(argspec):
+    pos_args_list     = (argspec.args           or [])
+    pos_args_defaults = (argspec.defaults       or ())
+
+    args_dict = OrderedDict([])
+
+    for n in pos_args_list[:-len(pos_args_defaults)]:
+        args_dict[n] = __EARG
+    for (n, v) in zip(pos_args_list[-len(pos_args_defaults):], pos_args_defaults):
+        args_dict[n] = v
+
+    return args_dict
+
+def build_positional_parameters_tuple(tparams, args, kws):
+    pargs = []
+    nn = 0
+    for (n, v) in zip(tparams['args_dict'].keys(), args):
+        pargs.append(v)
+        nn += 1
+    for n in list(tparams['args_dict'].keys())[nn:]:
+        if n in kws:
+            pargs.append(kws[n])
+            del kws[n]
+        else:
+            pargs.append(tparams['args_dict'][n])
+    pargs.extend(args[nn:])
+    return tuple(pargs)
+
+def get_typecheck_decor_or_func(f):
+    def rec_get(fu):
+     if hasattr(fu, '__bptr_typecheck_wrapper_parameters'):
+         return fu
+     else:
+         if hasattr(fu, '__wrapped__'):
+             return rec_get(fu.__wrapped__)
+         else:
+             return None
+    return (rec_get(f) or f)
+
 def typecheck(pos_args_sig=__EARG, kw_args_sig=__EARG, return_sig=__EARG):
     '''Function decorator. Checks decorated function's arguments and return value
     are of the expected type signature.
@@ -338,6 +420,9 @@ def typecheck(pos_args_sig=__EARG, kw_args_sig=__EARG, return_sig=__EARG):
     '''
     def decorator(f):
         nonlocal pos_args_sig, kw_args_sig, return_sig
+
+        f = get_typecheck_decor_or_func(f)
+
         if hasattr(f, '__bptr_typecheck_wrapper_parameters'):
             if pos_args_sig is not __EARG:
                 f.__bptr_typecheck_wrapper_parameters['pos_args_sig'] = pos_args_sig
@@ -351,64 +436,15 @@ def typecheck(pos_args_sig=__EARG, kw_args_sig=__EARG, return_sig=__EARG):
         else:
 
             argspec = inspect.getfullargspec(f)
-            pos_args_list     = (argspec.args           or [])
-            pos_args_defaults = (argspec.defaults       or ())
 
-            args_dict = OrderedDict([])
-
-            for n in pos_args_list[:-len(pos_args_defaults)]:
-                args_dict[n] = __EARG
-            for (n, v) in zip(pos_args_list[-len(pos_args_defaults):], pos_args_defaults):
-                args_dict[n] = v
+            args_dict = args_dict_from_spec(argspec)
 
             if (pos_args_sig is __EARG and kw_args_sig is __EARG and return_sig is __EARG):
-                if hasattr(argspec, 'annotations'):
-                    noretsig = True
-                    nopossig = True
-                    nokwsig  = True
-                    annots = argspec.annotations
-
-                    try:
-                        retsig = annots['return']
-                    except KeyError:
-                        noretsig = True
-                    else:
-                        noretsig = False
-                        if not isinstance(retsig, tuple):
-                            retsig = (retsig,)
-                        return_sig = retsig
-
-                    pargsig = []
-                    try:
-                        for n in pos_args_list:
-                            pargsig.append(annots[n])
-                        varargs_name = argspec.varargs
-                        if None is not varargs_name:
-                            var_sig = annots[varargs_name]
-                            if not isinstance(var_sig, Iterable):
-                                pargsig.append(var_sig)
-                            else:
-                                pargsig.extend(list(var_sig))
-                    except KeyError:
-                        nopossig = True
-                    else:
-                        nopossig = False
-                        pos_args_sig = tuple(pargsig)
-
-                    kwargsig = {}
-                    try:
-                        for n in argspec.kwonlyargs:
-                            kwargsig[n] = annots[n]
-                    except KeyError:
-                        nokwsig = True
-                    else:
-                        nokwsig = False
-                        kw_args_sig = kwargsig
-
-                    if noretsig and nopossig and nokwsig:
-                        return f
-                else:
+                pargsig, kwargsig, retsig = sigs_from_spec(argspec)
+                if pargsig is __EARG and kwargsig is __EARG and retsig is __EARG:
                     return f
+                else:
+                    pos_args_sig, kw_args_sig, return_sig = pargsig, kwargsig, retsig
 
             @wraps(f)
             def newf(*args, **kws):
@@ -417,23 +453,11 @@ def typecheck(pos_args_sig=__EARG, kw_args_sig=__EARG, return_sig=__EARG):
                     return f(*args, **kws)
                 else:
                     tparams = newf.__bptr_typecheck_wrapper_parameters
-
-                    pargs = []
-                    nn = 0
-                    for (n, v) in zip(tparams['args_dict'].keys(), args):
-                        pargs.append(v)
-                        nn += 1
-                    for n in list(tparams['args_dict'].keys())[nn:]:
-                        if n in kws:
-                            pargs.append(kws[n])
-                            del kws[n]
-                        else:
-                            pargs.append(tparams['args_dict'][n])
-                    pargs.extend(args[nn:])
+                    pargs = build_positional_parameters_tuple(tparams, args, kws)
 
                     try:
                         if tparams['pos_args_sig'] is not __EARG:
-                            rec_type_check(tparams['pos_args_sig'], tuple(pargs))
+                            rec_type_check(tparams['pos_args_sig'], pargs)
                         if tparams['kw_args_sig'] is not __EARG:
                             for (n,v) in kws.items():
                                 if not isinstance(v, tuple):
