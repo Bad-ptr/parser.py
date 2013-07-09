@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 # coding UTF-8
 
-# Author: Constantin Kulikov (Bad_ptr) <zxnotdead@gmail.com>
-# Date: 2013/06/04 07:25:46
+## Copyright 2013 Constantin Kulikov
+##
+## Author: Constantin Kulikov (Bad_ptr) <zxnotdead@gmail.com>
+## Date: 2013/07/09 21:27:52
+## License: GPL either version 2 or any later version
 
-# License:
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2, or (at your option)
