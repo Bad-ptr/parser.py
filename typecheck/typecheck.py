@@ -370,6 +370,7 @@ def sigs_from_spec(argspec):
     else:
         return __EARG, __EARG, __EARG
 
+
 def args_dict_from_spec(argspec):
     pos_args_list     = (argspec.args           or [])
     pos_args_defaults = (argspec.defaults       or ())
@@ -382,6 +383,7 @@ def args_dict_from_spec(argspec):
         args_dict[n] = v
 
     return args_dict
+
 
 def build_positional_parameters_tuple(tparams, args, kws):
     pargs = []
@@ -398,6 +400,7 @@ def build_positional_parameters_tuple(tparams, args, kws):
     pargs.extend(args[nn:])
     return tuple(pargs)
 
+
 def get_typecheck_decor_or_func(f):
     def rec_get(fu):
         if hasattr(fu, '__bptr_typecheck_wrapper_parameters'):
@@ -409,7 +412,8 @@ def get_typecheck_decor_or_func(f):
                 return None
     return (rec_get(f) or f)
 
-def typecheck(pos_args_sig=__EARG, kw_args_sig=__EARG, return_sig=__EARG):
+
+def typecheck(pos_args_sig=__EARG, kw_args_sig=__EARG, return_sig=__EARG, **options):
     '''Function decorator. Checks decorated function's arguments and return value
     are of the expected type signature.
 
@@ -432,6 +436,8 @@ def typecheck(pos_args_sig=__EARG, kw_args_sig=__EARG, return_sig=__EARG):
                 f.__bptr_typecheck_wrapper_parameters['kw_args_sig'] = kw_args_sig
             if return_sig is not __EARG:
                 f.__bptr_typecheck_wrapper_parameters['return_sig'] = return_sig
+            for k in options:
+                f.__bptr_typecheck_wrapper_parameters['options'][k] = options[k]
 
             return f
 
@@ -455,6 +461,7 @@ def typecheck(pos_args_sig=__EARG, kw_args_sig=__EARG, return_sig=__EARG):
                     return f(*args, **kws)
                 else:
                     tparams = newf.__bptr_typecheck_wrapper_parameters
+                    opts = tparams['options']
                     pargs = build_positional_parameters_tuple(tparams, args, kws)
 
                     try:
@@ -467,8 +474,11 @@ def typecheck(pos_args_sig=__EARG, kw_args_sig=__EARG, return_sig=__EARG):
                                 try:
                                     s = tparams['kw_args_sig'][n]
                                 except KeyError:
-                                    raise TypeCheckError([stack_with_error("Unknown keyword argument:"
-                                                                           , n, v)], 0)
+                                    if not bool(opts.get("allow_unknown_keywords")):
+                                        raise TypeCheckError([stack_with_error("Unknown keyword argument:"
+                                                                               , n, v)], 0)
+                                    else:
+                                        continue
                                 if not isinstance(s, tuple):
                                     s = (s,)
                                 rec_type_check(s, v)
@@ -507,6 +517,7 @@ def typecheck(pos_args_sig=__EARG, kw_args_sig=__EARG, return_sig=__EARG):
                 ,'pos_args_sig' : pos_args_sig
                 ,'kw_args_sig'  : kw_args_sig
                 ,'return_sig'   : return_sig
+                ,'options'      : options
             }
             return newf
     return decorator
