@@ -6,16 +6,22 @@
 # License: GPL either version 2 or any later version
 
 
-import sys
-import re
-from collections import (deque, Iterable)
 from typecheck import typecheck
 
-from utils import (NOMATCH, FULLMATCH, PARTIALMATCH, Nomatch, Fullmatch, Partialmatch
-                   , get_from_nested_dict, merge_nested_dicts, set_to_nested_dict
-                   , _or, ClsShow, ReadResult
-                   , BufferedIterator, BufferedReader, BIReadable
-                   , CharIterator, PStringable, thing_as_string, TextReader)
+from common_classes import(ClsShow
+                           , PStringable, thing_as_string
+                           , PLengthable, thing_as_length)
+
+from iters_readers import(BIReadable, TextReader
+                          ,ReadResult , Nomatch, Fullmatch, Partialmatch)
+
+from utils import (_or, get_from_nested_dict, merge_nested_dicts, set_to_nested_dict)
+
+from collections import Iterable
+
+import sys
+import re
+
 
 
 def SetRecursionLimit(n=5000):
@@ -134,7 +140,7 @@ class NotNeed(BIReadable):
 
     def _read_from(self, tr, **options):
         rslt = tr.read_thing(self.thing, **options)
-        if FULLMATCH == rslt.state:
+        if rslt.is_fullmatch():
             rslt.readedlist = [NotNeed(rslt.readedlist)]
         return rslt
 
@@ -192,7 +198,7 @@ class Node(BIReadable):
 
     def _read_from(self:object, tr:TextReader, **options) -> ReadResult:
         rslt = tr.read_thing(self.thing, **options)
-        if rslt.state == FULLMATCH:
+        if rslt.is_fullmatch():
             flat = _or(get_from_nested_dict(options, self.name + ".read_from", "flat")
                        , self.flat)
             skip = _or(get_from_nested_dict(options, self.name + ".read_from", "skip")
@@ -210,20 +216,19 @@ class Seq(BIReadable):
         self.thseq = list(_or(seq, thseq))
 
     def _read_from(self:object, tr:TextReader, **options) -> ReadResult:
-        state = FULLMATCH
+        rslt = Fullmatch([], self)
         acc = []
         for th in self.thseq:
             rslt = tr.read_thing(th, **options)
-            if rslt.state == FULLMATCH:
+            if rslt.is_fullmatch():
                 acc.extend(rslt.readedlist)
             else:
-                state = rslt.state
                 tr.push_back(acc)
                 break
-        if FULLMATCH == state:
+        if rslt.is_fullmatch():
             return Fullmatch(acc, self)
         else:
-            return ReadResult(state, acc, self)
+            return ReadResult(rslt.state, acc, self)
 
 
 class Num(BIReadable):
@@ -233,30 +238,32 @@ class Num(BIReadable):
         self.max_num = max_num
 
     def _read_from(self:object, tr:TextReader, **options) -> ReadResult:
-        state = FULLMATCH
+        rslt = Fullmatch([],self)
         acc = []
         n = 0
         while True:
             if self.max_num >= 0 and n >= self.max_num:
                 break
             rslt = tr.read_thing(self.thing, **options)
-            if rslt.state == FULLMATCH:
+            if rslt.is_fullmatch():
                 acc.extend(rslt.readedlist)
             else:
-                state = rslt.state
                 break
             n += 1
-        if n >= self.min_num:
-            state = FULLMATCH
-        if state != FULLMATCH:
-            tr.push_back(acc)
-        return ReadResult(state, acc, self)
+        if not rslt.is_fullmatch():
+            if n >= self.min_num:
+                return Fullmatch(acc, self)
+            else:
+                tr.push_back(acc)
+                return ReadResult(rslt.state, acc, self)
+        else:
+            return Fullmatch(acc, self)
 
 def ZeroOrOne(thing=None):
-    return Num(thing, min_num=-1, max_num=1)
+    return Num(thing, min_num=0, max_num=1)
 
 def ZeroOrMore(thing=None):
-    return Num(thing, min_num=-1, max_num=-1)
+    return Num(thing, min_num=0, max_num=-1)
 
 def OneOrMore(thing=None):
     return Num(thing, min_num=1, max_num=-1)
@@ -268,7 +275,7 @@ class Look(BIReadable):
 
     def _read_from(self:object, tr:TextReader, **options) -> ReadResult:
         rslt = tr.read_thing(self.thing, **options)
-        if rslt.state == FULLMATCH:
+        if rslt.is_fullmatch():
             tr.push_back(rslt.readedlist)
         rslt.readedlist = []
         rslt.readed_object = self
@@ -284,7 +291,6 @@ class Rx(BIReadable):
 
     #@typecheck(allow_unknown_keywords=True)
     def _read_from(self:object, tr:TextReader, **options) -> ReadResult:
-        state = NOMATCH
         n_chars = 0
         acc = ""
         if 'char' == self.mode:
@@ -292,7 +298,7 @@ class Rx(BIReadable):
                 if self.max_chars >= 0 and n_chars >= self.max_chars:
                     break
                 ch = tr.read_next(**options)
-                if FULLMATCH != ch.state:
+                if not ch.is_fullmatch():
                     break
                 if None is not re.match(self.regexp, thing_as_string(ch.readedlist)):
                     acc += thing_as_string(ch.readedlist)
@@ -306,7 +312,7 @@ class Rx(BIReadable):
                 if self.max_chars >= 0 and n_chars >= self.max_chars:
                     break
                 ch = tr.read_next(**options)
-                if FULLMATCH != ch.state:
+                if not ch.is_fullmatch():
                     break
                 if None is re.match(self.regexp, acc + thing_as_string(ch.readedlist)):
                     tr.push_back(ch.readedlist)
@@ -316,11 +322,12 @@ class Rx(BIReadable):
                 n_chars += 1
         else:
             return Nomatch([], self)
+
         if n_chars >= self.min_chars:
-            state = FULLMATCH
-        if state != FULLMATCH:
+            return Fullmatch(thing_as_string(acc), self)
+        else:
             tr.push_back(acc)
-        return ReadResult(state, thing_as_string(acc), self)
+            return Nomatch(thing_as_string(acc), self)
 
 
 class Concat(BIReadable):
@@ -332,7 +339,7 @@ class Concat(BIReadable):
         acc = ""
         for th in self.thseq:
             rslt = tr.read_thing(th, **options)
-            if FULLMATCH == rslt.state:
+            if rslt.is_fullmatch():
                 acc += thing_as_string(rslt.readedlist)
             else:
                 tr.push_back(acc)
@@ -351,7 +358,7 @@ class Or(BIReadable):
 
             for th in self.thseq:
                 rslt = tr.read_thing(th, **options)
-                if FULLMATCH == rslt.state:
+                if rslt.is_fullmatch():
                     return rslt
             return Nomatch([], self)
 
@@ -361,7 +368,7 @@ class Or(BIReadable):
             i = 0
             for th in self.thseq:
                 rslt = tr.read_thing(th, **options)
-                if FULLMATCH == rslt.state:
+                if rslt.is_fullmatch():
                     l = len(thing_as_string(rslt.readedlist))
                     if l > maxl:
                         maxl = l
@@ -387,7 +394,7 @@ class Not(BIReadable):
         while True:
             for th in self.thseq:
                 rslt = tr.read_thing(th, **options)
-                if FULLMATCH == rslt.state:
+                if rslt.is_fullmatch():
                     tr.push_back(rslt.readedlist)
                     if not escaped:
                         return Nomatch()

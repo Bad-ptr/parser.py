@@ -13,8 +13,7 @@ This is translated and slightly modified version of EBNF grammar
 """
 
 
-from utils import (NOMATCH, FULLMATCH, PARTIALMATCH, Nomatch, Fullmatch, Partialmatch
-                   , TextReader)
+from iters_readers import TextReader
 from parser import (Grammar, Literal, NotNeed, TRef, Node
                     , Seq, Num, ZeroOrOne, ZeroOrMore, OneOrMore
                     , Look, Rx, Concat, Or, Not
@@ -25,25 +24,15 @@ SetRecursionLimit(5000)
 
 cur_grammar = Grammar()
 
-space = Node("space", Concat(Num(Or(" ", "\t", "\n"))), skip=True, grammar=cur_grammar)
-comment = Node("comment", Seq("(", "*"
-                              , Node("text", Concat(Num(Not(Seq("*", ")")))))
-                              , "*", ")")
-               , skip=True, grammar=cur_grammar)
-skip_pattern = Num(Or(space, comment))
-
-tr = TextReader(open("ebnf_test.txt"), skip_pattern=skip_pattern)
-
-
 
 letter = Rx('[a-zA-Z]')
 digit = Rx('[0-9]')
 symbol = Or("[", "]", "(", ")", "{", "}", "<", ">", "'", "'", "=", "|", ".", ",", ";")
 character = Or(letter, digit, symbol)
 
-identifier = Node("identifier", Concat(letter, Num(Or(letter, digit,),min_num=0)), grammar=cur_grammar)
-terminal = Node("terminal" , Concat(Or(Seq(NotNeed("'"), Num(Not("'")), NotNeed("'"))
-                                       , Seq(NotNeed('"'), Num(Not('"')), NotNeed('"'))))
+identifier = Node("identifier", Concat(letter, ZeroOrMore(Or(letter, digit,))), grammar=cur_grammar)
+terminal = Node("terminal" , Concat(Or(Seq(NotNeed("'"), ZeroOrMore(Not("'")), NotNeed("'"))
+                                       , Seq(NotNeed('"'), ZeroOrMore(Not('"')), NotNeed('"'))))
                 , grammar=cur_grammar)
 
 ident_or_term = Or(identifier, terminal)
@@ -87,9 +76,18 @@ rhs = Node("rhs", Or( concatenation
            , grammar=cur_grammar)
 
 rule = Node("rule", Seq(lhs, NotNeed("="), rhs, NotNeed(";")), grammar=cur_grammar)
-grammar = Node("ebnf_grammar", Num(rule), grammar=cur_grammar)
+grammar = Node("ebnf_grammar", ZeroOrMore(rule), grammar=cur_grammar)
 
 
 if __name__ == '__main__':
+    space = Node("space", Concat(OneOrMore(Or(" ", "\t", "\n"))), skip=True)
+    comment = Node("comment", Seq("(", "*"
+                                  , Node("text", Concat(ZeroOrMore(Not(Seq("*", ")")))))
+                                  , "*", ")")
+                   , skip=True)
+    skip_pattern = OneOrMore(Or(space, comment))
+
+    tr = TextReader(open("ebnf_test.txt"), skip_pattern=skip_pattern)
+
     rslt = grammar.read_from(tr)
     pprint_node_list(rslt.readedlist)
