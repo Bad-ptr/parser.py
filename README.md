@@ -10,7 +10,7 @@ X-URL: https://github.com/Bad-ptr/parser.py
 # parser.py
 
 ## Intro
-Simple descent recursive parser in python 3.
+Simple descent recursive parser in python 3.  
 
 ## Usage examples
-For example see file `ebnf.py`
+For example see files `ebnf.py`, `lexer_test.py`, `ebnf_with_lexer.py`.  

@@ -12,9 +12,10 @@ This is translated and slightly modified version of EBNF grammar
   from https://en.wikipedia.org/wiki/Ebnf#Examples
 """
 
+from common_classes  import thing_pprint
 from utils           import SetRecursionLimit
 from iters_readers   import TextReader
-from parser          import (Grammar, Node, TRef, pprint_node_list)
+from parser          import (Grammar, Node, TRef)
 from readable_things import (Literal, NotNeed, Seq, Num
                              , ZeroOrOne, ZeroOrMore, OneOrMore
                              , Look, Rx, Concat, Or, Not)
@@ -90,4 +91,4 @@ if __name__ == '__main__':
     SetRecursionLimit(5000)
 
     rslt = grammar.read_from(tr)
-    pprint_node_list(rslt.readedlist)
+    thing_pprint(rslt.readedlist)

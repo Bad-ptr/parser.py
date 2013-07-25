@@ -10,7 +10,7 @@
 
 from typecheck      import typecheck
 
-from common_classes import (ClsShow
+from common_classes import (ClsShow, gen_indentation, thing_pprint
                             , PStringable, thing_as_string
                             , PLengthable, thing_as_length)
 
@@ -38,38 +38,33 @@ class Grammar(ClsShow):
         return self
 
 
-def gen_indentation(level=0):
-    space = ""
-    for i in range(level):
-        space += "  "
-    return space
 
-def pprint_node_list(nlist=None, level=0, pref=None):
-    if None is pref:
-        pref = ""
-    if None is nlist:
-        nlist = []
-    if isinstance(nlist, ParseNode):
-        return nlist.PPrint(level, pref)
-    if isinstance(nlist, ClsShow):
-        space = gen_indentation(level)
-        print(space + pref, end="")
-        nlist.PPrint(level+1)
-    elif isinstance(nlist, list):
-        if len(nlist) < 1:
-            print(pref)
-            print((pref + "[]"),end="")
-        else:
-            space = gen_indentation(level)
-            print(space + pref + "[")
-            comma="  "
-            for nl in nlist:
-                pprint_node_list(nl, level+1, comma)
-                comma=", "
-            print(space + "]",end="")
-    else:
-        space = gen_indentation(level)
-        print(space + pref + repr(nlist))
+# def pprint_node_list(nlist=None, level=0, pref=None):
+#     if None is pref:
+#         pref = ""
+#     if None is nlist:
+#         nlist = []
+#     if isinstance(nlist, ParseNode):
+#         return nlist.PPrint(level, pref)
+#     if isinstance(nlist, ClsShow):
+#         space = gen_indentation(level)
+#         print(space + pref, end="")
+#         nlist.PPrint(level+1)
+#     elif isinstance(nlist, list):
+#         if len(nlist) < 1:
+#             print(pref)
+#             print((pref + "[]"),end="")
+#         else:
+#             space = gen_indentation(level)
+#             print(space + pref + "[")
+#             comma="  "
+#             for nl in nlist:
+#                 pprint_node_list(nl, level+1, comma)
+#                 comma=", "
+#             print(space + "]",end="")
+#     else:
+#         space = gen_indentation(level)
+#         print(space + pref + repr(nlist))
 
 
 class ParseNode(ClsShow, PStringable):
@@ -94,11 +89,14 @@ class ParseNode(ClsShow, PStringable):
     def _as_string(self):
         return thing_as_string(self.subnodes)
 
-    def PPrint(self, level=0, pref=""):
+    def PPrint(self, level=0, pref="", post="", end="\n", first_indent=True):
         space = gen_indentation(level)
-        print(space + pref + self.__class__.__name__ + "(" + repr(self.name) + ", ")
-        pprint_node_list(nlist=self.subnodes, level=level+1, pref="")
-        print(")")
+        if first_indent:
+            print(space, end="")
+        print(pref + self.__class__.__name__ + "(" + repr(self.name))
+        thing_pprint(self.subnodes, level+1, ", ", end="")
+        #pprint_node_list(nlist=self.subnodes, level=level+1, pref="")
+        print(")" + post, end=end)
 
     def filtered_subnodes(self):
         return filter(bool, self)

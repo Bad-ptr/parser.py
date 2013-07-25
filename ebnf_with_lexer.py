@@ -8,6 +8,8 @@
 ## License: GPL either version 2 or any later version
 
 
+from common_classes  import thing_pprint
+
 from lexer_test      import (tt_identifier, tt_number, tt_operator, tt_terminator
                              , tt_space, tt_comment, tt_literal, tt_list, tt_skip_list
                              , tok_openbr, tok_closebr, tok_opencurlybr, tok_closecurlbr
@@ -17,7 +19,7 @@ from lexer_test      import (tt_identifier, tt_number, tt_operator, tt_terminato
 
                              , token_iterator, token_reader)
 
-from parser          import (Grammar, Node, TRef, pprint_node_list)
+from parser          import (Grammar, Node, TRef)
 
 from lexer           import (TokenIterator, TokenReader)
 
@@ -86,4 +88,4 @@ if __name__ == '__main__':
     #SetRecursionLimit(5000)
     # lexer reducing recursion level
     rslt = pn_grammar.read_from(token_reader)
-    pprint_node_list(rslt.readedlist)
+    thing_pprint(rslt.readedlist)

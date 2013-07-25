@@ -8,7 +8,7 @@
 ## License: GPL either version 2 or any later version
 
 
-from common_classes import (ClsShow
+from common_classes import (ClsShow, gen_indentation, thing_pprint
                             , PStringable, thing_as_string
                             , PLengthable, thing_as_length)
 
@@ -36,13 +36,13 @@ class NotNeed(PStringable, BIReadable):
     def __bool__(self):
         return False
 
-    def PPrint(self, level=0):
-        print(self.__class__.__name__ + "(", end="")
-        if isinstance(self.thing, ClsShow):
-            self.thing.PPrint(level)
-        else:
-            print(str(self.thing), end="")
-        print(")")
+    def PPrint(self, level=0, pref="", post="", end="\n", first_indent=True):
+        space = gen_indentation(level)
+        if first_indent:
+            print(space, end="")
+        print(pref + self.__class__.__name__ + "(", end="")
+        thing_pprint(self.thing, level=level+1, end="", first_indent=False)
+        print(")" + post, end=end)
 
     def _as_string(self):
         return thing_as_string(self.thing)

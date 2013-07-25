@@ -8,6 +8,8 @@
 ## License: GPL either version 2 or any later version
 
 
+from common_classes  import thing_pprint
+
 from lexer           import (Token, TokenType, TokenIterator, TokenReader
                              , string_to_tok_by_type)
 
@@ -72,7 +74,7 @@ token_reader = TokenReader(token_iterator)
 
 if __name__ == '__main__':
     for tok in token_iterator:
-        tok.PPrint()
+        thing_pprint(tok)
     # rslt = token_reader.read_next()
     # tok = rslt.readedlist[0]
     # while tok:

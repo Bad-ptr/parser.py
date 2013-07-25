@@ -8,8 +8,15 @@
 ## License: GPL either version 2 or any later version
 
 
+from utils       import _or
 from collections import Iterable
 
+
+def gen_indentation(level=0):
+    space = ""
+    for i in range(level):
+        space += "  "
+    return space
 
 class ClsShow():
     def __repr__(self):
@@ -22,8 +29,45 @@ class ClsShow():
     def __str__(self):
         return "<" + self.__class__.__name__ + ">"
 
-    def PPrint(self, level=0):
-        print(repr(self))
+    def PPrint(self, level=0, pref="", post="", end="\n", first_indent=True):
+        if first_indent:
+            print(space, end="")
+        print( pref + repr(self) + post, end=end)
+
+
+def thing_pprint(thing=None, level=0, pref="", post="", end="\n", first_indent=True):
+    pref = _or(pref, "")
+    if isinstance(thing, ClsShow):
+        thing.PPrint(level, pref, post, end, first_indent)
+    elif isinstance(thing, dict):
+        space = gen_indentation(level)
+        if first_indent:
+            print(space, end="")
+        print(pref + "{")
+        for (k,v) in thing.items():
+            thing_pprint(k, level+1, post=" : ", end="")
+            thing_pprint(v, 0)
+        print(space + "}" + post, end=end)
+    elif isinstance(thing, (list, tuple)):
+        space = gen_indentation(level)
+        openbr = "("
+        closebr = ")"
+        if isinstance(thing, list):
+            openbr = "["
+            closebr = "]"
+        if first_indent:
+            print(space, end="")
+        print(pref + openbr)
+        comma="  "
+        for th in thing:
+            thing_pprint(th, level+1, pref=comma)
+            comma=", "
+        print(space + closebr + post, end=end)
+    else:
+        space = gen_indentation(level)
+        if first_indent:
+            print(space, end="")
+        print(pref + repr(thing) + post, end=end)
 
 
 class PStringable():

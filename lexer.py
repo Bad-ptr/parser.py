@@ -9,7 +9,7 @@
 
 from typecheck import typecheck
 
-from common_classes import (ClsShow
+from common_classes import (ClsShow, gen_indentation, thing_pprint
                             , PStringable, thing_as_string
                             , PLengthable, thing_as_length)
 
@@ -70,12 +70,17 @@ class Token(BIReadable, PStringable):
             return False
             #return self.string == thing_as_string(other)
 
-    def PPrint(self, level=0):
-        typp = ""
-        if None is not self.type:
-            typp = self.type.name
-        print(self.__class__.__name__ + "(" + repr(self.string) + ", "
-              + typp + ")")
+    def PPrint(self, level=0, pref="", post="", end="\n", first_indent=True):
+        space = gen_indentation(level)
+        if first_indent:
+            print(space, end="")
+        print( pref + self.__class__.__name__ + "(" + repr(self.string) + ", ", end="")
+        if None is self.type:
+            print('None', end="")
+        else:
+            print(self.type.name, end="")
+        #thing_pprint(self.type, end="")
+        print(")" + post, end=end)
 
     def _as_string(self):
         return self.string
