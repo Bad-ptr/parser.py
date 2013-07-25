@@ -8,17 +8,17 @@
 ## License: GPL either version 2 or any later version
 
 
-from typecheck import typecheck
+from typecheck      import typecheck
 
 from common_classes import (ClsShow
                             , PStringable, thing_as_string
                             , PLengthable, thing_as_length)
 
-from utils import (_or, merge_nested_dicts, get_from_nested_dict, set_to_nested_dict
-                   , add_hook, run_pre_hooks)
+from utils          import (_or, merge_nested_dicts, get_from_nested_dict, set_to_nested_dict
+                            , add_hook, run_pre_hooks)
 
-from collections import (deque, Iterable)
-from itertools import islice
+from collections    import (deque, Iterable)
+from itertools      import islice
 
 import re
 
@@ -137,7 +137,7 @@ class BufferedReader(ClsShow):
             el = self.read_raw_next(**options)
         except StopIteration:
             state = NOMATCH
-        return ReadResult(state, el, el)
+        return ReadResult(state, [el], el)
 
     def read_el(self, el, **options):
         cel = self.read_next(**options)
@@ -204,7 +204,7 @@ class CharIterator(BufferedIterator):
                     super().push_forward(el)
                 else:
                     for e in el:
-                        super().push_forward(e)
+                        self.push_forward(e)
         return self
 
     def push_back(self, el=None):
@@ -216,7 +216,7 @@ class CharIterator(BufferedIterator):
                 else:
                     seq = reversed(list(el))
                     for e in seq:
-                        super().push_back(e)
+                        self.push_back(e)
         return self
 
     def __next__(self):
@@ -226,13 +226,15 @@ class CharIterator(BufferedIterator):
 class TextReader(BufferedReader):
     def __init__(self, chiter=None, hooks=None, skip_pattern=None):
         hooks = _or(hooks, {})
-        self.skip_pattern = _or(skip_pattern, [])
-        add_hook("pre", "read_el"
-                 , lambda br, el: br.read_thing(self.skip_pattern, nohooks=True)
-                 , hooks)
-        add_hook("pre", "read_next"
-                 , lambda br, el: br.read_thing(self.skip_pattern, nohooks=True)
-                 , hooks)
+        #self.skip_pattern = _or(skip_pattern, [])
+        self.skip_pattern = skip_pattern
+        if None is not self.skip_pattern:
+            add_hook("pre", "read_el"
+                     , lambda br, el: br.read_thing(self.skip_pattern, nohooks=True)
+                     , hooks)
+            add_hook("pre", "read_next"
+                     , lambda br, el: br.read_thing(self.skip_pattern, nohooks=True)
+                     , hooks)
         super().__init__(chiter, hooks)
         if not isinstance(self.inp_buf_iter, CharIterator):
             self.inp_buf_iter = CharIterator(self.inp_buf_iter)
@@ -309,11 +311,11 @@ class TextReader(BufferedReader):
 
 
 class BIReadable(ClsShow):
-    @typecheck(allow_unknown_keywords=True)
+    #@typecheck(allow_unknown_keywords=True)
     def can_read_from(self:object, br:BufferedReader) -> ReadResult:
         return self._can_read_from(br)
 
-    @typecheck(allow_unknown_keywords=True)
+    #@typecheck(allow_unknown_keywords=True)
     def read_from(self:object, br:BufferedReader, **options) -> ReadResult:
         return self._read_from(br, **options)
 
@@ -322,7 +324,7 @@ class BIReadable(ClsShow):
                                   + "to use instances of " + repr(self.__class__.__name__)
                                   + " as BIReadable.")
 
-    @typecheck()
+    #@typecheck()
     def _can_read_from(self:object, br:BufferedReader) -> ReadResult:
         reslt = self.read_from(br, dry_run=True)
         if reslt.state == FULLMATCH:

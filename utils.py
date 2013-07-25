@@ -1,10 +1,18 @@
 #!/usr/bin/env python
 # coding UTF-8
 
+# Copyright 2013 Constantin Kulikov
+#
 # Author: Constantin Kulikov (Bad_ptr) <zxnotdead@gmail.com>
 # Date: 2013/06/21 11:21:11
 # License: GPL either version 2 or any later version
 
+
+import sys
+
+
+def SetRecursionLimit(n=5000):
+    sys.setrecursionlimit(n)
 
 def _or(smth, defv):
     if None is smth:

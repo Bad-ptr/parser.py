@@ -1,5 +1,5 @@
 (* a simple program syntax in EBNF *)
-program = 'PRO\'GRAM', white space, identifier, white space, 
+program = 'PROGRAM', white space, identifier, white space, 
            'BEGIN', white space, 
            { assignment, ";", white space }, 
            'END.' ;

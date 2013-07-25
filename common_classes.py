@@ -16,11 +16,14 @@ class ClsShow():
         hide = ["_ClsShow__no_repr"]
         if hasattr(self, "_ClsShow__no_repr"):
             hide = hide + self._ClsShow__no_repr
-        params = ", ".join("{!r}={!r}".format(k,v) for (k,v) in self.__dict__.items() if k not in hide)
+        params = ", ".join("{!s}={!r}".format(k,v) for (k,v) in self.__dict__.items() if k not in hide)
         return self.__class__.__name__ + "(" + params + ")"
 
     def __str__(self):
         return "<" + self.__class__.__name__ + ">"
+
+    def PPrint(self, level=0):
+        print(repr(self))
 
 
 class PStringable():

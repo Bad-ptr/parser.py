@@ -12,15 +12,13 @@ This is translated and slightly modified version of EBNF grammar
   from https://en.wikipedia.org/wiki/Ebnf#Examples
 """
 
+from utils           import SetRecursionLimit
+from iters_readers   import TextReader
+from parser          import (Grammar, Node, TRef, pprint_node_list)
+from readable_things import (Literal, NotNeed, Seq, Num
+                             , ZeroOrOne, ZeroOrMore, OneOrMore
+                             , Look, Rx, Concat, Or, Not)
 
-from iters_readers import TextReader
-from parser import (Grammar, Literal, NotNeed, TRef, Node
-                    , Seq, Num, ZeroOrOne, ZeroOrMore, OneOrMore
-                    , Look, Rx, Concat, Or, Not
-                    , SetRecursionLimit, pprint_node_list)
-
-
-SetRecursionLimit(5000)
 
 cur_grammar = Grammar()
 
@@ -88,6 +86,8 @@ if __name__ == '__main__':
     skip_pattern = OneOrMore(Or(space, comment))
 
     tr = TextReader(open("ebnf_test.txt"), skip_pattern=skip_pattern)
+
+    SetRecursionLimit(5000)
 
     rslt = grammar.read_from(tr)
     pprint_node_list(rslt.readedlist)
