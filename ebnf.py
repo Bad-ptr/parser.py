@@ -88,7 +88,7 @@ if __name__ == '__main__':
 
     tr = TextReader(open("ebnf_test.txt"), skip_pattern=skip_pattern)
 
-    SetRecursionLimit(5000)
+    #SetRecursionLimit(5000)
 
     rslt = grammar.read_from(tr)
     thing_pprint(rslt.readedlist)

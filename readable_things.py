@@ -25,7 +25,10 @@ import re
 
 class NotNeed(PStringable, BIReadable):
     def __init__(self, thing=None):
-        self.thing = thing
+        if isinstance(thing, self.__class__):
+            self.thing = thing.thing
+        else:
+            self.thing = thing
 
     def __iter__(self):
         if isinstance(self.thing, Iterable):
@@ -56,7 +59,10 @@ class NotNeed(PStringable, BIReadable):
 
 class Literal(BIReadable):
     def __init__(self, string=""):
-        self.string = string
+        if isinstance(string, self.__class__):
+            self.string = string.string
+        else:
+            self.string = string
 
     def _read_from(self:object, tr:TextReader, **options) -> ReadResult:
         return tr.read_thing(self.string, **options)
@@ -64,7 +70,13 @@ class Literal(BIReadable):
 
 class Seq(BIReadable):
     def __init__(self, *thseq, seq=None):
-        self.thseq = _or(seq, thseq)
+        self.thseq = []
+        thseq = _or(seq, thseq)
+        for th in thseq:
+            if isinstance(th, self.__class__):
+                self.thseq.extend(th.thseq)
+            else:
+                self.thseq.append(th)
 
     def _read_from(self:object, tr:TextReader, **options) -> ReadResult:
         rslt = Fullmatch([], self)
@@ -123,7 +135,10 @@ def OneOrMore(thing=None):
 
 class Look(BIReadable):
     def __init__(self, thing=None):
-        self.thing = thing
+        if isinstance(thing, self.__class__):
+            self.thing = thing.thing
+        else:
+            self.thing = thing
 
     def _read_from(self:object, tr:TextReader, **options) -> ReadResult:
         rslt = tr.read_thing(self.thing, **options)
@@ -184,7 +199,12 @@ class Rx(BIReadable):
 
 class Concat(BIReadable):
     def __init__(self, *thseq):
-        self.thseq = thseq
+        self.thseq = []
+        for th in thseq:
+            if isinstance(th, (self.__class__, Seq)):
+                self.thseq.extend(th.thseq)
+            else:
+                self.thseq.append(th)
 
     #@typecheck(allow_unknown_keywords=True)
     def _read_from(self:object, tr:TextReader, **options) -> ReadResult:
@@ -202,7 +222,12 @@ class Concat(BIReadable):
 
 class Or(BIReadable):
     def __init__(self, *thseq, mode=None):
-        self.thseq = thseq
+        self.thseq = []
+        for th in thseq:
+            if isinstance(th, self.__class__):
+                self.thseq.extend(th.thseq)
+            else:
+                self.thseq.append(th)
         self.mode = _or(mode, "first")
 
     def _read_from(self:object, tr:TextReader, **options) -> ReadResult:
@@ -237,11 +262,16 @@ class Or(BIReadable):
 
 class Not(BIReadable):
     def __init__(self, *thseq, escape_char="\\", allow_escaped=True):
-        self.thseq = thseq
+        self.thseq = []
+        for th in thseq:
+            if isinstance(th, self.__class__):
+                self.thseq.extend(th.thseq)
+            else:
+                self.thseq.append(th)
         self.escape_char = escape_char
         self.allow_escaped = allow_escaped
 
-    def _read_from(self:object, tr:TextReader, **options) -> ReadResult:
+    def _read_from(self:object, tr : TextReader, **options) -> ReadResult:
         escaped = False
         while True:
             for th in self.thseq:
@@ -250,14 +280,92 @@ class Not(BIReadable):
                     tr.push_back(rslt.readedlist)
                     if not escaped:
                         return Nomatch()
-            rslt = tr.read_next_char(**options)
-            if escaped:
-                escaped = False
-                return rslt
+            rslt = tr.read_next(**options)
+            if rslt.is_fullmatch():
+                if escaped:
+                    escaped = False
+                    return rslt
+                else:
+                    if self.allow_escaped and self.escape_char == rslt.readedlist[0]:
+                        escaped = True
+                        continue
+                    else:
+                        return rslt
             else:
-                if self.escape_char == rslt.readedlist[0]:
-                    escaped = True
+                if escaped:
+                    tr.push_back(self.escape_char)
+                rslt.readed_object = self
+                return rslt
+        return Nomatch([], self)
+
+
+class Surrounded(BIReadable):
+    def __init__(begining=None, ending=None, escape_char="\\", allow_escaped=True, allow_nesting=True):
+        self.begining = begining
+        self.ending = ending
+        self.escape_char = escape_char
+        self.allow_escaped = allow_escaped
+        self.allow_nesting = allow_nesting
+
+    def _read_from(self, tr, **options) -> ReadResult:
+        escaped = False
+        nesting_level = 1
+        acc = []
+
+        begin_result = tr.read_thing(self.begining)
+        acc.extend(begin_result.readedlist)
+        if not begin_result.is_fullmatch():
+            return Nomatch(begin_result.readedlist, self)
+
+        while True:
+            if escaped:
+                th_begin = tr.read_thing(self.begining, **options)
+                if th_begin.is_fullmatch():
+                    acc.extend(th_begin.readedlist)
+                    escaped = False
+                    continue
+                th_end = tr.read_thing(self.ending, **options)
+                if th_end.is_fullmatch():
+                    acc.extend(th_end.readedlist)
+                    escaped = False
+                    continue
+                th = tr.read_next(**options)
+                if th.is_fullmatch():
+                    acc.extend(th.readedlist)
+                    escaped = False
                     continue
                 else:
-                    return rslt
-            #rslt.readed_object = self
+                    break
+            else:
+                th_begin = tr.read_thing(self.begining, **options)
+                if th_begin.is_fullmatch():
+                    if allow_nesting:
+                        nesting_level += 1
+                    acc.extend(th_begin.readedlist)
+                    continue
+                th_end = tr.read_thing(self.ending, **options)
+                if th_end.is_fullmatch():
+                    nesting_level -= 1
+                    acc.extend(th_end.readedlist)
+                    if nesting_level <= 0:
+                        break
+                    else:
+                        continue
+                if self.allow_escaped:
+                    th_escape = tr.read_thing(self.escape_char, **options)
+                    if th_escape.is_fullmatch():
+                        acc.extend(th_escape.readedlist)
+                        escaped = True
+                        continue
+                th = tr.read_next(**options)
+                if th.is_fullmatch():
+                    acc.extend(th.readedlist)
+                    continue
+                else:
+                    break
+
+        if nesting_level <= 0:
+            return Fullmatch(acc, self)
+        else:
+            tr.push_back(acc)
+            return Nomatch(acc, self)
